@@ -4,6 +4,12 @@ Zero-shot voice cloning from video files with Coqui XTTS-v2. No training needed 
 
 Tested on Windows + Python 3.10 + RTX 3050 Laptop (CUDA 12.1).
 
+## Easy start (no commands)
+
+Double-click **`start.bat`** — the server starts and your browser opens at http://127.0.0.1:8000. Pick a voice, type, press Clone, listen. (Backend is `scripts/api.py` + the `web/` UI.)
+
+**New voice from a mix of files:** in the second card, type a name, select many audio/video files, press *Upload & build voice* — they are cleaned, mixed into one pooled voice, and auto-selected for cloning. Same as `ingest.py`, no commands.
+
 ## Setup (uv)
 
 ```powershell
@@ -22,11 +28,22 @@ Notes:
 data/videos/        # input .mp4 files
 data/audio_clean/   # extracted / cleaned reference WAVs
 outputs/            # cloned WAVs
+engines/            # pluggable TTS backends (ElevenLabs-style)
+  base.py           # VoiceEngine interface
+  registry.py       # discovery (built-in + entry-points)
+  xtts.py           # built-in Coqui XTTS-v2 engine
 scripts/
-  extract_audio.py  # video -> mono WAV
-  clean_ref.py      # trim + denoise + normalize ref
-  clone.py          # XTTS-v2 zero-shot cloning
+  extract_audio.py   # video -> mono WAV
+  clean_ref.py       # trim + denoise + normalize ref (--denoise 0.3 expressive / 0.6 noisy)
+  clone.py           # XTTS-v2 zero-shot cloning (single shot)
+  compute_latents.py # speaker conditioning -> cached .pt (run once per voice)
+  clone_fast.py      # model loads once + cached latents, batch --texts file, --engine
+  engine.py          # list / add / test engines
+  ingest.py          # batch: many files/folder -> cleaned dataset + pooled voice
+  api.py             # web backend (JSON API + serves web/)
+  server.py          # Gradio UI, model stays loaded (fastest for repeats)
 ```
+Web UI lives in `web/index.html` (vanilla HTML/JS, no build step).
 
 ## Usage
 
@@ -64,6 +81,74 @@ Expressive (more intonation) — use punctuation and an emotional ref segment:
 
 ```powershell
 uv run python scripts/clone.py --text "えっ、本当に？信じられないよ！すごく嬉しいなぁ…" --speaker-wav "data/audio_clean/deer_expressive.wav" --out "outputs/deer_expressive_ja.wav" --language ja --speed 0.95
+```
+
+## Train from many files (batch ingest)
+
+Point at a folder or several files — videos and audios mix freely. Each file is extracted, trimmed/denoised, logged to `manifest.json`, and concatenated into `pooled.wav` (capped at ~30s, XTTS's limit):
+
+```powershell
+uv run python scripts/ingest.py --input data/videos --out-dir data/voices/my_show
+uv run python scripts/ingest.py --input a.mp4 --input b.m4a --out-dir data/voices/mix --start 2.0 --dur 8.0 --denoise 0.4
+```
+
+Then build one voice from all of them:
+
+```powershell
+uv run python scripts/compute_latents.py --speaker-wav data/voices/my_show/pooled.wav --out data/voices/my_show/voice.pt
+uv run python scripts/clone_fast.py --latents data/voices/my_show/voice.pt --text "こんにちは！" --out outputs/x.wav --language ja
+```
+
+Tip: ingest one speaker/show per folder. Mixing different speakers in one pool blurs the voice.
+
+## Fast path (optimized, RTX 3050)
+
+`clone.py` reloads the 2 GB model on every call (~20s). For repeats, cache latents and keep the model loaded:
+
+```powershell
+# once per voice (~2s, saved to data/audio_clean/deer.pt)
+uv run python scripts/compute_latents.py --speaker-wav "data/audio_clean/deer_expressive.wav" --out "data/audio_clean/deer.pt"
+
+# batch: model loads once, then ~2s per line (texts.txt = one sentence per line)
+uv run python scripts/clone_fast.py --latents "data/audio_clean/deer.pt" --texts texts.txt --out-dir "outputs/batch" --language ja --temperature 0.75
+
+# or interactive server (zero reload between clones)
+uv run python scripts/server.py
+```
+
+`--temperature`: 0.6 flatter/safer, 0.75 default, 0.85 more expressive.
+
+## Engines (ElevenLabs-style, GitHub-importable)
+
+`xtts` is built in. Other backends plug in via the `VoiceEngine` interface and auto-register:
+
+```powershell
+uv run python scripts/engine.py list
+uv run python scripts/engine.py add git+https://github.com/user/their-engine.git
+uv run python scripts/engine.py test --engine xtts --text "hello" --ref data/audio_clean/deer_expressive.wav --language en
+```
+
+Use any registered engine in batch or UI:
+
+```powershell
+uv run python scripts/clone_fast.py --engine their-engine --ref-audio data/audio_clean/deer_expressive.wav --text "hello" --out outputs/x.wav --language en
+```
+
+To publish an engine on GitHub, match the interface (no VoiceStudio dependency needed — duck-typed):
+
+```python
+# their_package/__init__.py
+from pathlib import Path
+class F5Engine:
+    name = "f5"; label = "F5-TTS (GitHub)"; needs_ref = True
+    def synthesize(self, text, out, language="en", ref_audio=None, **kw):
+        ...  # write WAV to Path(out), return it
+```
+
+```toml
+# their pyproject.toml
+[project.entry-points."voicestudio.engines"]
+f5 = "their_package:F5Engine"
 ```
 
 ## Tips for natural voice (น้ำเสียง)

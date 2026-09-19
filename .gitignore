@@ -15,14 +15,18 @@ __pycache__/
 outputs/
 !/outputs/.gitkeep
 
-# Local audio / video (large binaries)
+# Local audio / video (large binaries + generated datasets)
 data/audio_clean/
+data/voices/
 data/videos/*.mp4
 data/videos/*.mkv
 data/videos/*.mov
 data/videos/*.webm
 *.wav
 !/data/.gitkeep
+
+# Gradio cache
+.gradio/
 
 # OS / editors
 .DS_Store

@@ -3276,6 +3276,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "cutlet" },
+    { name = "fastapi" },
     { name = "faster-whisper" },
     { name = "ffmpeg-python" },
     { name = "fugashi" },
@@ -3286,6 +3287,7 @@ dependencies = [
     { name = "numpy", version = "1.22.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "onnxruntime" },
+    { name = "python-multipart" },
     { name = "scipy", version = "1.11.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "setuptools" },
@@ -3295,11 +3297,13 @@ dependencies = [
     { name = "transformers" },
     { name = "tts" },
     { name = "unidic-lite" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "cutlet" },
+    { name = "fastapi" },
     { name = "faster-whisper" },
     { name = "ffmpeg-python" },
     { name = "fugashi" },
@@ -3308,6 +3312,7 @@ requires-dist = [
     { name = "noisereduce" },
     { name = "numpy" },
     { name = "onnxruntime", specifier = "==1.23.2" },
+    { name = "python-multipart" },
     { name = "scipy" },
     { name = "setuptools", specifier = "<81" },
     { name = "soundfile" },
@@ -3316,6 +3321,7 @@ requires-dist = [
     { name = "transformers", specifier = "==4.46.3" },
     { name = "tts", specifier = ">=0.22.0" },
     { name = "unidic-lite" },
+    { name = "uvicorn" },
 ]
 
 [[package]]

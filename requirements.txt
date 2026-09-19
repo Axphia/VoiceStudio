@@ -1,10 +1,12 @@
-# -- PyTorch CUDA (RTX 3050) - install first separately --
-# pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
-torch
-torchaudio
+# Fallback for plain pip users. Preferred: `uv sync` (see pyproject.toml).
+# -- PyTorch CUDA (RTX 3050) - install FIRST separately --
+# pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+torch==2.5.1
+torchaudio==2.5.1
 
-# Zero-shot voice cloning (XTTS-v2)
+# Zero-shot voice cloning (XTTS-v2) — transformers v5 breaks TTS, stay on 4.x
 TTS>=0.22.0
+transformers==4.46.3
 
 # Audio from video
 ffmpeg-python
@@ -14,8 +16,20 @@ scipy
 numpy
 noisereduce
 
-# Optional: transcription / subtitles
+# Transcription
 faster-whisper
+onnxruntime==1.23.2
 
-# Simple UI / inference server
+# Python 3.10 compat (librosa uses pkg_resources)
+setuptools<81
+
+# Japanese text (XTTS --language ja)
+cutlet
+fugashi
+unidic-lite
+
+# UI / server
 gradio
+fastapi
+uvicorn
+python-multipart

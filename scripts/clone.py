@@ -1,6 +1,10 @@
 """Zero-shot voice cloning with Coqui XTTS-v2. No training needed."""
 import argparse
+import warnings
 from pathlib import Path
+
+warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
+warnings.filterwarnings("ignore", category=FutureWarning, module="TTS.*")
 
 import torch
 from TTS.api import TTS

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceStudio</title>
+<style>
+  :root { --bg: #14161c; --card: #1e222c; --accent: #7c5cff; --text: #e8eaf0; --muted: #9aa0b4; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  p.sub { color: var(--muted); margin: 0 0 24px; }
+  .card { background: var(--card); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  label { display: block; font-size: .8rem; color: var(--muted); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  select, textarea { width: 100%; background: #12141a; color: var(--text); border: 1px solid #333a4d; border-radius: 8px; padding: 10px; font-size: 1rem; }
+  textarea { min-height: 110px; resize: vertical; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { color: var(--text); font-weight: 600; }
+  button { width: 100%; padding: 14px; font-size: 1.05rem; font-weight: 700; color: #fff; background: var(--accent); border: 0; border-radius: 10px; cursor: pointer; margin-top: 16px; }
+  button:disabled { opacity: .5; cursor: wait; }
+  audio { width: 100%; margin-top: 12px; }
+  #status { color: var(--muted); font-size: .85rem; margin-top: 8px; min-height: 1.2em; }
+  #status.err { color: #ff7b7b; }
+  #upstatus { color: var(--muted); font-size: .85rem; margin-top: 8px; min-height: 1.2em; }
+  #upstatus.err { color: #ff7b7b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎙️ VoiceStudio</h1>
+  <p class="sub">Zero-shot voice cloning — pick a voice, type, clone.</p>
+
+  <div class="card">
+    <label>Voice</label>
+    <select id="voice"></select>
+    <label>Text</label>
+    <textarea id="text" placeholder="えっ、本当に？信じられないよ！"></textarea>
+    <div class="row">
+      <div><label>Engine</label><select id="engine"></select></div>
+      <div><label>Language</label>
+        <select id="lang"><option value="ja">Japanese</option><option value="en">English</option></select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label>Expressiveness <span class="val" id="tempVal">0.75</span></label>
+        <input type="range" id="temp" min="0.5" max="0.95" step="0.05" value="0.75"></div>
+      <div><label>Speed <span class="val" id="speedVal">0.95</span></label>
+        <input type="range" id="speed" min="0.8" max="1.2" step="0.05" value="0.95"></div>
+    </div>
+    <button id="go">Clone voice</button>
+    <div id="status"></div>
+    <audio id="player" controls style="display:none"></audio>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:1.1rem;margin:0 0 4px">New voice from files</h2>
+    <p class="sub">Select many audio/video files — they are cleaned and mixed into one voice.</p>
+    <label>Voice name</label>
+    <input type="text" id="vname" value="my_voice" style="width:100%;background:#12141a;color:var(--text);border:1px solid #333a4d;border-radius:8px;padding:10px;font-size:1rem">
+    <label>Files (audio + video, multi-select)</label>
+    <input type="file" id="files" multiple accept="audio/*,video/*,.mkv,.avi,.m4a,.ogg,.opus,.flac,.aac">
+    <button id="up">Upload &amp; build voice</button>
+    <div id="upstatus"></div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const status = (msg, err=false) => { const s = $("status"); s.textContent = msg; s.className = err ? "err" : ""; };
+
+async function init() {
+  try {
+    const [v, e] = await Promise.all([
+      fetch("/api/voices").then(r => r.json()),
+      fetch("/api/engines").then(r => r.json()),
+    ]);
+    setVoices(v.voices);
+    $("engine").innerHTML = e.engines.map(x => `<option value="${x.id}">${x.label}</option>`).join("");
+  } catch { status("Backend not reachable. Is api.py running?", true); }
+}
+function setVoices(voices, select) {
+  $("voice").innerHTML = voices.map(x => `<option value="${x.id}">${x.label}</option>`).join("") || "<option value=''>No voices — build one below</option>";
+  if (select) $("voice").value = select;
+}
+$("temp").oninput = e => $("tempVal").textContent = e.target.value;
+$("speed").oninput = e => $("speedVal").textContent = e.target.value;
+$("go").onclick = async () => {  const btn = $("go"), player = $("player");
+  btn.disabled = true; player.style.display = "none"; status("Cloning… (first run loads the 2GB model, ~20s)");
+  try {
+    const r = await fetch("/api/clone", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ text: $("text").value, voice: $("voice").value, language: $("lang").value,
+        engine: $("engine").value, temperature: +$("temp").value, speed: +$("speed").value }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    player.src = URL.createObjectURL(await r.blob());
+    player.style.display = "block"; player.play();
+    status("Done ✓");
+  } catch (err) { status("Error: " + err.message, true); }
+  btn.disabled = false;
+};
+$("up").onclick = async () => {
+  const btn = $("up"), st = $("upstatus"), files = $("files").files;
+  st.textContent = "";
+  if (!files.length) { st.textContent = "Select files first."; st.className = "err"; return; }
+  btn.disabled = true; st.className = ""; st.textContent = `Uploading ${files.length} file(s) and building voice…`;
+  try {
+    const fd = new FormData();
+    fd.append("name", $("vname").value || "my_voice");
+    for (const f of files) fd.append("files", f);
+    const r = await fetch("/api/voices", { method: "POST", body: fd });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const data = await r.json();
+    const v = await fetch("/api/voices").then(x => x.json());
+    setVoices(v.voices, data.voice);
+    st.textContent = `Voice "${data.label}" ready from ${data.files} file(s) ✓ — selected above, press Clone voice.`;
+  } catch (err) { st.textContent = "Error: " + err.message; st.className = "err"; }
+  btn.disabled = false;
+};
+init();
+</script>
+</body>
+</html>
