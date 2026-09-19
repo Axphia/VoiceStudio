@@ -1,0 +1,37 @@
+[project]
+name = "voicestudio"
+version = "0.1.0"
+description = "Zero-shot voice cloning from video files (XTTS-v2)"
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+dependencies = [
+  "torch==2.5.1",
+  "torchaudio==2.5.1",
+  "TTS>=0.22.0",
+  "transformers==4.46.3",
+  "ffmpeg-python",
+  "librosa",
+  "soundfile",
+  "scipy",
+  "numpy",
+  "noisereduce",
+  "faster-whisper",
+  "onnxruntime==1.23.2",
+  "setuptools<81",
+  "cutlet",
+  "fugashi",
+  "unidic-lite",
+  "gradio",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu121" }]
+torchaudio = [{ index = "pytorch-cu121" }]
+
+[tool.uv]
+managed = true

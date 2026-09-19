@@ -1,0 +1,21 @@
+# -- PyTorch CUDA (RTX 3050) - install first separately --
+# pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+torch
+torchaudio
+
+# Zero-shot voice cloning (XTTS-v2)
+TTS>=0.22.0
+
+# Audio from video
+ffmpeg-python
+librosa
+soundfile
+scipy
+numpy
+noisereduce
+
+# Optional: transcription / subtitles
+faster-whisper
+
+# Simple UI / inference server
+gradio

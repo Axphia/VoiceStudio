@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual env (managed by uv)
+.venv/
+
+# uv
+.uv/
+
+# Outputs (generated clones)
+outputs/
+!/outputs/.gitkeep
+
+# Local audio / video (large binaries)
+data/audio_clean/
+data/videos/*.mp4
+data/videos/*.mkv
+data/videos/*.mov
+data/videos/*.webm
+*.wav
+!/data/.gitkeep
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
