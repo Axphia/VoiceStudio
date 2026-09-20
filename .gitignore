@@ -18,12 +18,19 @@ outputs/
 # Local audio / video (large binaries + generated datasets)
 data/audio_clean/
 data/voices/
+data/ft/
 data/videos/*.mp4
 data/videos/*.mkv
 data/videos/*.mov
 data/videos/*.webm
 *.wav
 !/data/.gitkeep
+
+# Training runs (checkpoints are GBs)
+training/
+
+# Exported model bundles (GBs)
+models/
 
 # Gradio cache
 .gradio/

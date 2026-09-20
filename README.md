@@ -10,6 +10,8 @@ Double-click **`start.bat`** — the server starts and your browser opens at htt
 
 **New voice from a mix of files:** in the second card, type a name, select many audio/video files, press *Upload & build voice* — they are cleaned, mixed into one pooled voice, and auto-selected for cloning. Same as `ingest.py`, no commands.
 
+**Train your own model:** the third card runs `prepare_ft` + `train_xtts` as a background job — pick source folder, language, epochs, profile (or smoke test), press Start, watch the live log. Only one job at a time. System line up top shows VRAM + active profile.
+
 ## Setup (uv)
 
 ```powershell
@@ -100,6 +102,61 @@ uv run python scripts/clone_fast.py --latents data/voices/my_show/voice.pt --tex
 ```
 
 Tip: ingest one speaker/show per folder. Mixing different speakers in one pool blurs the voice.
+
+## Train your own model (fine-tune XTTS-v2)
+
+Zero-shot above borrows the base voice. Fine-tuning bakes YOUR voice into the weights:
+
+```powershell
+# 1. dataset: transcribe + chunk to <=11s (3+ min of speech ideally)
+uv run python scripts/prepare_ft.py --input data/audio_clean --out data/ft/myvoice --language ja
+
+# 2. smoke test: overfits 1 batch, proves it fits your VRAM
+uv run python scripts/train_xtts.py --dataset data/ft/myvoice --language ja --smoke
+
+# 3. full run (RTX 3050 4GB profile: batch 1, grad-accum 16, fp32)
+uv run python scripts/train_xtts.py --dataset data/ft/myvoice --language ja --epochs 20
+
+# resume: --resume training/run/<run-dir>/checkpoint_N.pth
+```
+
+PC lags while training? Train in installments — N epochs, GPU rests, auto-resume:
+
+```powershell
+uv run python scripts/train_xtts.py --dataset data/ft/myvoice --epochs 6 --burst-epochs 2 --rest-seconds 90
+```
+
+Same checkbox exists in the web Train card. Each burst saves checkpoints and the next
+resumes from the latest (`Model restored from step N`); rest gaps leave the GPU idle.
+
+Laggy machine? Check + auto-tune first (mid profile fits RTX 3050 4GB):
+
+```powershell
+uv run python scripts/hw.py                    # CPU/RAM/VRAM report + profile
+uv run python scripts/train_xtts.py --dataset data/ft/myvoice --profile mid ...
+```
+
+Training needs ~3.8 GB free VRAM — close browser/games first or it OOMs.
+
+Verified on RTX 3050 4GB: real epoch, loss 2.04 → 2.00, checkpoints saved, no OOM.
+Notes: fp32 is default (fp16 AMP overflows to NaN on this stack — `--fp16` to try it);
+checkpoints are ~5.6 GB each (`training/` is git-ignored); base weights/DVAE auto-resolve
+(local XTTS download + HuggingFace `coqui/XTTS-v2`); dead Coqui-gateway URLs are worked around
+(official mel_stats extracted from `model.pth`).
+
+## Export model (.pth) + calibrate voice
+
+Pick an epoch, pack it as a portable bundle, tune pitch/expressiveness:
+
+```powershell
+# --checkpoint = epoch pick (checkpoint_3 vs _9 = different epochs)
+uv run python scripts/export_model.py --checkpoint training/run/<run>/checkpoint_9.pth --out models/myvoice
+
+uv run python scripts/calibrate.py --text "こんにちは！" --voice data/audio_clean/deer_expressive.wav --model models/myvoice --pitch 2 --temperature 0.85 --language ja --out outputs/cali.wav
+```
+
+- `--pitch` semitones (-12..+12), `--temperature` 0.6 flat → 0.85 expressive, `--speed`, `--model` bundle dir (omit = base XTTS).
+- Honest limits: the bundle is Coqui-XTTS format (loads anywhere `TTS` runs) — RVC/voice-changer apps can't read XTTS weights (different architecture), and full XTTS→ONNX isn't practical (autoregressive GPT). For ONNX changer compatibility you'd train an RVC model instead — ask if you want that pipeline.
 
 ## Fast path (optimized, RTX 3050)
 

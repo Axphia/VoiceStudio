@@ -21,6 +21,7 @@ dependencies = [
   "cutlet",
   "fugashi",
   "unidic-lite",
+  "psutil",
   "gradio",
   "fastapi",
   "uvicorn",

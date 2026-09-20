@@ -4,17 +4,22 @@ Run:  uv run python scripts/api.py        -> http://127.0.0.1:8000
 Or double-click start.bat (opens the browser for you).
 """
 import argparse
+import contextlib
 import importlib.util
+import io
 import re
 import shutil
 import sys
 import tempfile
+import threading
 import time
+import uuid
 import warnings
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # project root (engines package)
+sys.path.insert(0, str(ROOT / "scripts"))  # hw, train_xtts direct imports
 
 warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
 warnings.filterwarnings("ignore", category=FutureWarning, module="TTS.*")
@@ -122,13 +127,109 @@ def engines():
                         for n, c in sorted(list_engines().items())]}
 
 
-def _ingest_module():
+def _script_module(name: str):
     spec = importlib.util.spec_from_file_location(
-        "ingest", ROOT / "scripts" / "ingest.py")
+        name, ROOT / "scripts" / f"{name}.py")
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def _ingest_module():
+    return _script_module("ingest")
+
+
+@app.get("/api/hw")
+def hw():
+    mod = _script_module("hw")
+    info = mod.detect()
+    return {**info, "profile": mod.recommend(info),
+            "profiles": list(mod.PROFILES)}
+
+
+@app.get("/api/ft-sources")
+def ft_sources():
+    srcs = []
+    ac = ROOT / "data" / "audio_clean"
+    if ac.is_dir() and list(ac.glob("*.wav")):
+        srcs.append({"id": "data/audio_clean", "label": "audio_clean"})
+    vroot = ROOT / "data" / "voices"
+    if vroot.is_dir():
+        for sub in sorted(vroot.iterdir()):
+            if sub.is_dir() and list((sub / "clean").glob("*.wav")):
+                srcs.append({"id": str((sub / 'clean').relative_to(ROOT)),
+                             "label": f"{sub.name}/clean"})
+    return {"sources": srcs}
+
+
+class TrainRequest(BaseModel):
+    source: str
+    language: str = "ja"
+    epochs: int = 3
+    profile: str = "auto"
+    smoke: bool = False
+    burst_epochs: int = 0
+    rest_seconds: int = 90
+
+
+_jobs: dict[str, dict] = {}
+
+
+def _run_train_job(job_id: str, req: TrainRequest):
+    job = _jobs[job_id]
+    log = open(job["log"], "w", encoding="utf-8")
+    try:
+        with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+            prep = _script_module("prepare_ft")
+            ds = ROOT / "training" / "web" / job_id
+            prep.prepare(ROOT / req.source, ds, req.language, job_id)
+            tr = _script_module("train_xtts")
+            tr.train(ds, req.language, ds / "run", req.epochs, False,
+                     req.smoke, None, str(tr.BASE_DIR),
+                     "こんにちは、これはテストです。",
+                     None, None, False, None, 50, "auto"
+                     if req.profile == "auto" else req.profile,
+                     f"web-{job_id}", req.burst_epochs, req.rest_seconds)
+        job["status"] = "done"
+    except Exception as e:
+        print(f"[job {job_id}] FAILED: {e}", file=log)
+        job["status"] = "error"
+    finally:
+        log.close()
+
+
+@app.post("/api/train")
+def start_train(req: TrainRequest):
+    src = (ROOT / req.source).resolve()
+    if not str(src).startswith(str(ROOT)) or not src.is_dir():
+        raise HTTPException(400, f"Unknown source: {req.source}")
+    if any(j["status"] == "running" for j in _jobs.values()):
+        raise HTTPException(409, "A training job is already running.")
+    job_id = uuid.uuid4().hex[:8]
+    _jobs[job_id] = {"status": "running", "source": req.source,
+                     "log": str(ROOT / "training" / "web" / f"{job_id}.log"),
+                     "started": time.strftime("%H:%M:%S")}
+    Path(_jobs[job_id]["log"]).parent.mkdir(parents=True, exist_ok=True)
+    threading.Thread(target=_run_train_job, args=(job_id, req),
+                     daemon=True).start()
+    return {"job": job_id}
+
+
+@app.get("/api/train")
+def list_train():
+    return {"jobs": [{**{k: v for k, v in j.items() if k != "log"}, "id": i}
+                     for i, j in _jobs.items()]}
+
+
+@app.get("/api/train/{job_id}")
+def train_status(job_id: str):
+    if job_id not in _jobs:
+        raise HTTPException(404, "Unknown job.")
+    log = Path(_jobs[job_id]["log"])
+    tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-30:] \
+        if log.exists() else []
+    return {"id": job_id, "status": _jobs[job_id]["status"], "log": tail}
 
 
 @app.post("/api/voices")

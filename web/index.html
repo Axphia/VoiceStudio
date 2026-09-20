@@ -33,6 +33,7 @@
 <main>
   <h1>🎙️ VoiceStudio</h1>
   <p class="sub">Zero-shot voice cloning — pick a voice, type, clone.</p>
+  <p class="sub" id="hwline"></p>
 
   <div class="card">
     <label>Voice</label>
@@ -66,6 +67,28 @@
     <button id="up">Upload &amp; build voice</button>
     <div id="upstatus"></div>
   </div>
+
+  <div class="card">
+    <h2 style="font-size:1.1rem;margin:0 0 4px">Train your own model</h2>
+    <p class="sub">Fine-tunes XTTS on a voice folder. Slow (hours) — smoke test takes ~4 min.</p>
+    <label>Source folder</label>
+    <select id="src"></select>
+    <div class="row">
+      <div><label>Language</label>
+        <select id="tlang"><option value="ja">Japanese</option><option value="en">English</option></select></div>
+      <div><label>Epochs</label>
+        <select id="epochs"><option>1</option><option selected>3</option><option>10</option><option>20</option></select></div>
+      <div><label>Profile</label>
+        <select id="prof"><option value="auto">auto</option><option value="low">low</option><option value="mid">mid</option><option value="high">high</option></select></div>
+    </div>
+    <div class="row">
+      <div><label><input type="checkbox" id="smoke" style="width:auto"> smoke test only (~4 min)</label></div>
+      <div><label><input type="checkbox" id="burst" style="width:auto"> installments: 1 epoch, rest 90s, resume</label></div>
+    </div>
+    <button id="train">Start training</button>
+    <div id="tstatus"></div>
+    <pre id="tlog" style="background:#12141a;border-radius:8px;padding:10px;max-height:220px;overflow:auto;font-size:.75rem;display:none"></pre>
+  </div>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -79,6 +102,12 @@ async function init() {
     ]);
     setVoices(v.voices);
     $("engine").innerHTML = e.engines.map(x => `<option value="${x.id}">${x.label}</option>`).join("");
+    const s = await fetch("/api/ft-sources").then(r => r.json());
+    $("src").innerHTML = s.sources.map(x => `<option value="${x.id}">${x.label}</option>`).join("") || "<option value=''>No sources</option>";
+    try {
+      const h = await fetch("/api/hw").then(r => r.json());
+      $("hwline").textContent = `${h.gpu_name || "CPU"} · ${h.vram_free_gb ?? "?"}GB VRAM free · profile ${h.profile}`;
+    } catch {}
   } catch { status("Backend not reachable. Is api.py running?", true); }
 }
 function setVoices(voices, select) {
@@ -119,6 +148,33 @@ $("up").onclick = async () => {
     st.textContent = `Voice "${data.label}" ready from ${data.files} file(s) ✓ — selected above, press Clone voice.`;
   } catch (err) { st.textContent = "Error: " + err.message; st.className = "err"; }
   btn.disabled = false;
+};
+let trainTimer = null;
+async function pollTrain(id) {
+  const r = await fetch(`/api/train/${id}`).then(x => x.json());
+  const log = $("tlog");
+  log.style.display = "block";
+  log.textContent = r.log.join("\n");
+  log.scrollTop = log.scrollHeight;
+  $("tstatus").textContent = `Job ${id}: ${r.status}`;
+  if (r.status !== "running") { clearInterval(trainTimer); trainTimer = null; $("train").disabled = false; }
+}
+$("train").onclick = async () => {
+  const btn = $("train");
+  btn.disabled = true; $("tstatus").textContent = "Starting…";
+  try {
+    const r = await fetch("/api/train", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ source: $("src").value, language: $("tlang").value,
+        epochs: +$("epochs").value, profile: $("prof").value, smoke: $("smoke").checked,
+        burst_epochs: $("burst").checked ? 1 : 0, rest_seconds: 90 }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const { job } = await r.json();
+    $("tstatus").textContent = `Job ${job}: running…`;
+    trainTimer = setInterval(() => pollTrain(job), 5000);
+    pollTrain(job);
+  } catch (err) { $("tstatus").textContent = "Error: " + err.message; btn.disabled = false; }
 };
 init();
 </script>
