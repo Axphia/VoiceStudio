@@ -25,6 +25,7 @@ dependencies = [
   "fastapi",
   "uvicorn",
   "python-multipart",
+  "huggingface-hub>=0.36.2",
 ]
 
 [[tool.uv.index]]

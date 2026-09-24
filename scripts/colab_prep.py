@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import zipfile
 from pathlib import Path
@@ -317,19 +318,40 @@ def upload_to_drive(nb_path: str, zip_path: str):
 # Import Trained Model
 # ---------------------------------------------------------------------------
 
-def import_model(zip_file: str, model_name: str):
-    if not zip_file:
+def import_model(zip_file, model_name: str):
+    if zip_file is None:
         return "❌ Please upload a ZIP file."
     if not model_name.strip():
         return "❌ Please enter a model name."
 
-    log = f"🔄 Processing {Path(zip_file).name}...\n"
+    # Gradio can return a string path, a dict {"path": ...}, or an object with .name
+    if isinstance(zip_file, dict):
+        file_path = Path(zip_file.get("path") or zip_file.get("name", ""))
+    elif hasattr(zip_file, "name"):
+        file_path = Path(zip_file.name)
+    else:
+        file_path = Path(str(zip_file))
+
+    if not file_path.exists():
+        return f"❌ File not found: {file_path}"
+
+    log = f"🔄 Processing {file_path.name}...\n"
+    log += f"   Path: {file_path}\n"
     out_dir = ROOT / "models" / model_name.strip()
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
+
+        # Try to open as zip
+        if not zipfile.is_zipfile(str(file_path)):
+            return log + (
+                f"❌ File is not a valid ZIP archive.\n"
+                f"   Make sure you downloaded the folder from Google Drive as a ZIP.\n"
+                f"   (Right-click folder in Drive → Download)"
+            )
+
         try:
-            with zipfile.ZipFile(zip_file, 'r') as zf:
+            with zipfile.ZipFile(str(file_path), 'r') as zf:
                 zf.extractall(tmp_path)
             log += "✅ Unzipped successfully.\n"
         except Exception as e:
@@ -338,33 +360,38 @@ def import_model(zip_file: str, model_name: str):
         # Find checkpoint
         chkpts = list(tmp_path.rglob("checkpoint_*.pth"))
         if not chkpts:
-            # Maybe it's already exported? Look for model.pth
-            if list(tmp_path.rglob("model.pth")):
-                shutil.copytree(tmp_path, out_dir, dirs_exist_ok=True)
-                return log + f"✅ Installed directly to models/{model_name}"
-            return log + "❌ No checkpoint_*.pth or model.pth found in ZIP."
-            
-        # Get the latest checkpoint by number
+            # Already exported? Look for model.pth
+            model_files = list(tmp_path.rglob("model.pth"))
+            if model_files:
+                # Copy the parent dir of model.pth
+                src = model_files[0].parent
+                shutil.copytree(src, out_dir, dirs_exist_ok=True)
+                return log + f"✅ Installed pre-exported model to models/{model_name}\n👉 Restart VoiceStudio (start.bat) to use it!"
+            # List what's inside for debugging
+            found = [str(f.relative_to(tmp_path)) for f in tmp_path.rglob("*") if f.is_file()]
+            return log + f"❌ No checkpoint_*.pth or model.pth found.\n   Files in ZIP:\n" + "\n".join(f"   {f}" for f in found[:20])
+
+        # Get the latest checkpoint by step number
+        import re
         def get_step(p):
-            import re
             m = re.search(r"checkpoint_(\d+)\.pth", p.name)
             return int(m.group(1)) if m else 0
-            
+
         best_chkpt = max(chkpts, key=get_step)
         log += f"✅ Found checkpoint: {best_chkpt.name}\n"
-        
+
         # Export model
-        log += f"⏳ Exporting to models/{model_name} (this might take a minute)...\n"
-        cmd = [shutil.which("uv") or "uv", "run", "python", "scripts/export_model.py", 
+        log += f"⏳ Exporting to models/{model_name} (may take ~1 minute on CPU)...\n"
+        cmd = [shutil.which("uv") or "uv", "run", "python", "scripts/export_model.py",
                "--checkpoint", str(best_chkpt), "--out", str(out_dir)]
-        
+
         proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)
         if proc.returncode == 0:
             log += f"🎉 Success! Model installed to models/{model_name}\n"
-            log += "👉 You can now restart VoiceStudio (start.bat) to use it!"
+            log += "👉 Restart VoiceStudio (start.bat) to use it!"
         else:
             log += f"❌ Export failed:\n{proc.stderr}"
-            
+
     return log
 
 
