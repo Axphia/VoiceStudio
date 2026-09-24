@@ -208,7 +208,7 @@ class F5Engine:
 f5 = "their_package:F5Engine"
 ```
 
-## Tips for natural voice (น้ำเสียง)
+## Tips for natural voice 
 
 - Reference: 6–12s, one speaker, no music/SFX. Full 17s noisy clips sound robotic.
 - Match language: JA speaker + `--language en` gives cross-lingual accent. Same-language first to check quality.
