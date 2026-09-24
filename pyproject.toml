@@ -15,7 +15,6 @@ dependencies = [
   "scipy",
   "numpy",
   "noisereduce",
-  "faster-whisper",
   "onnxruntime==1.23.2",
   "setuptools<81",
   "cutlet",

@@ -37,8 +37,13 @@ from TTS.tts.layers.xtts.trainer.gpt_trainer import (
     XttsAudioConfig as TrainerAudioConfig,
 )
 
-BASE_DIR = (Path(os.environ.get("LOCALAPPDATA", "~"))
-            / "tts" / "tts_models--multilingual--multi-dataset--xtts_v2")
+import platform
+if platform.system() == "Windows":
+    _tts_home = Path(os.environ.get("LOCALAPPDATA", "~")) / "tts"
+else:
+    _tts_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "tts"
+
+BASE_DIR = _tts_home / "tts_models--multilingual--multi-dataset--xtts_v2"
 
 
 def compute_mel_stats(dataset: Path, out_path: Path):

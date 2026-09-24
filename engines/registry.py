@@ -39,7 +39,6 @@ def _discover_external() -> None:
 
 def _discover_builtin() -> None:
     from . import xtts as _xtts  # noqa: F401  (registers itself)
-
     _ = _xtts
 
 

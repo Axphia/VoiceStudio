@@ -39,6 +39,16 @@ def export(checkpoint: Path, out: Path, base_dir: Path):
     state = load_state(checkpoint)
     prefs = sorted({k.split(".")[0] for k in state})
     print(f"[export] weight groups: {prefs}")
+
+    # Trainer checkpoints (GPTTrainer) nest XTTS weights under "xtts." prefix.
+    # Strip that prefix so the exported model.pth matches the inference layout.
+    if "xtts" in prefs and "gpt" not in prefs:
+        print("[export] detected GPTTrainer checkpoint, stripping 'xtts.' prefix...")
+        state = {k.replace("xtts.", "", 1): v for k, v in state.items()
+                 if k.startswith("xtts.")}
+        prefs = sorted({k.split(".")[0] for k in state})
+        print(f"[export] remapped weight groups: {prefs}")
+
     if "gpt" not in prefs or "hifigan_decoder" not in prefs:
         raise SystemExit(f"Not an XTTS checkpoint: {checkpoint}")
 
@@ -47,7 +57,9 @@ def export(checkpoint: Path, out: Path, base_dir: Path):
     shutil.copy(run_cfg if run_cfg.exists() else base_dir / "config.json",
                 out / "config.json")
     for f in ("vocab.json", "speakers_xtts.pth"):
-        shutil.copy(base_dir / f, out / f)
+        src = base_dir / f
+        if src.exists():
+            shutil.copy(src, out / f)
     print(f"[export] bundle -> {out} "
           f"({sum(p.stat().st_size for p in out.iterdir())/1e9:.2f} GB)")
     return out
