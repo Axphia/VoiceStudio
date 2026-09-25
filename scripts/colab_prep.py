@@ -79,14 +79,11 @@ def generate_notebook(dataset_name: str, language: str, epochs: int) -> Path:
                 "metadata": {},
                 "outputs": [],
                 "source": [
-                    "# 2. Install uv + unzip project + install dependencies\n",
-                    "!curl -LsSf https://astral.sh/uv/install.sh | sh\n",
-                    "import os\n",
-                    "os.environ['PATH'] = f\"/root/.cargo/bin:{os.environ['PATH']}\"\n",
-                    "\n",
+                    "# 2. Unzip project + install dependencies\n",
                     "!unzip -q VoiceStudio.zip\n",
                     "%cd VoiceStudio\n",
-                    "!uv sync"
+                    "# Use Colab's native PyTorch (supports all GPUs), just install TTS and tools\n",
+                    "!pip install -q TTS faster-whisper cutlet fugashi unidic-lite"
                 ]
             },
             {
@@ -107,7 +104,7 @@ def generate_notebook(dataset_name: str, language: str, epochs: int) -> Path:
                 "outputs": [],
                 "source": [
                     "# 4. Download XTTS-v2 base model (~1.9 GB)\n",
-                    "!env MPLBACKEND=agg uv run python -c \"from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')\""
+                    "!env MPLBACKEND=agg python -c \"from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')\""
                 ]
             },
             {
@@ -117,7 +114,7 @@ def generate_notebook(dataset_name: str, language: str, epochs: int) -> Path:
                 "outputs": [],
                 "source": [
                     "# 5. Train!\n",
-                    f"!env MPLBACKEND=agg uv run python scripts/train_xtts.py \\\n",
+                    f"!env MPLBACKEND=agg python scripts/train_xtts.py \\\n",
                     f"    --dataset data/ft/{dataset_name} \\\n",
                     f"    --language {language} \\\n",
                     f"    --epochs {epochs} \\\n",
@@ -130,9 +127,28 @@ def generate_notebook(dataset_name: str, language: str, epochs: int) -> Path:
                 "metadata": {},
                 "outputs": [],
                 "source": [
-                    "# 6. Save checkpoints to Google Drive\n",
-                    f"!cp -r training/run /content/drive/MyDrive/VoiceStudio_{dataset_name}\n",
-                    "print('Saved to Google Drive! Download from drive.google.com')"
+                    "# 6. Export the best model and Save to Google Drive\n",
+                    "import os, glob\n",
+                    "runs = sorted(glob.glob('training/run/run-*'))\n",
+                    "if not runs:\n",
+                    "    print('No training runs found.')\n",
+                    "else:\n",
+                    "    run_dir = runs[-1]\n",
+                    "    best_ckpt = os.path.join(run_dir, 'best_model.pth')\n",
+                    "    if not os.path.exists(best_ckpt):\n",
+                    "        ckpts = sorted(glob.glob(os.path.join(run_dir, 'checkpoint_*.pth')), key=os.path.getmtime)\n",
+                    "        if ckpts: best_ckpt = ckpts[-1]\n",
+                    "    \n",
+                    "    if os.path.exists(best_ckpt):\n",
+                    "        print(f'Exporting {best_ckpt}...')\n",
+                    f"        !python scripts/export_model.py --checkpoint {best_ckpt} --out models/{dataset_name} --base-dir /root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2\n",
+                    f"        !zip -r VoiceStudio_{dataset_name}.zip models/{dataset_name}\n",
+                    f"        !cp VoiceStudio_{dataset_name}.zip /content/drive/MyDrive/\n",
+                    "        from google.colab import drive\n",
+                    "        drive.flush_and_unmount()\n",
+                    "        print('Saved and fully synced to Google Drive! You can now download it from drive.google.com.')\n",
+                    "    else:\n",
+                    "        print('No checkpoints found to export.')\n"
                 ]
             }
         ],
@@ -214,7 +230,8 @@ def run_pipeline(voice_name: str, language: str, epochs: int, video_folder: str,
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for f in ft_dir.rglob("*"):
                 if f.is_file():
-                    zf.write(f, f.relative_to(ft_dir))
+                    arcname = str(f.relative_to(ft_dir)).replace("\\", "/")
+                    zf.write(f, arcname)
         log += f"  ✅ Dataset zip: {zip_path}\n"
     except Exception as e:
         log += f"  ❌ Zip failed: {e}\n"
@@ -238,7 +255,8 @@ def run_pipeline(voice_name: str, language: str, epochs: int, video_folder: str,
                 top_level = rel_path.parts[0]
                 
                 if top_level in INCLUDE_DIRS or str(rel_path) in INCLUDE_FILES:
-                    zf.write(f, rel_path)
+                    arcname = str(rel_path).replace("\\", "/")
+                    zf.write(f, arcname)
                     
         log += f"  ✅ Project zip: {proj_zip}\n"
     except Exception as e:
