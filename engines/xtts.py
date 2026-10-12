@@ -17,6 +17,7 @@ class XTTSEngine(VoiceEngine):
     name = "xtts"
     label = "Coqui XTTS-v2 (local, CUDA)"
     needs_ref = True
+    supports_zero_shot = True
 
     def __init__(self):
         self._model = None

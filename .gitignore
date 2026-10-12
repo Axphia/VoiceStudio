@@ -19,6 +19,7 @@ outputs/
 data/audio_clean/
 data/voices/
 data/ft/
+data/api_keys.json
 data/videos/*.mp4
 data/videos/*.mkv
 data/videos/*.mov

@@ -7,13 +7,14 @@ Tested on Windows + Python 3.10 + RTX 3050 Laptop (CUDA 12.1).
 ## Quick Start (no commands)
 
 Double-click **`start.bat`** — the server starts and your browser opens at http://127.0.0.1:9999.
-Pick a voice, type your text, press **Clone**, listen.
+The app has four views in the left sidebar:
+
+- **Library** — browse every cloned voice, reference clip and trained model as cards (tags, duration, preview ▶). Click *Use in Studio* to load one into the playground.
+- **Studio** — pick a reference voice + model + engine, type text, press **Generate speech**, and play the result on the waveform player. Build a new voice from uploaded files here too.
+- **Train** — fine-tune XTTS as a background job with a live log.
+- **API** — create/revoke API keys and read the HTTP API reference (interactive docs at `/docs`).
 
 > **Note:** Port is **9999** (not 8000) to avoid Windows Hyper-V reserved port conflicts.
-
-**New voice from files:** In the Upload card, type a name, select audio/video files, press *Upload & build voice* — they are cleaned, mixed into one pooled voice, and auto-selected for cloning.
-
-**Train your own model (web UI):** The Train card runs `prepare_ft` + `train_xtts` as a background job — pick source folder, language, epochs, press Start, watch the live log.
 
 ## Colab Training (recommended for better quality)
 
@@ -193,7 +194,16 @@ uv run python scripts/calibrate.py \
 
 ## Engines (pluggable)
 
-`xtts` is the built-in engine. Add third-party engines via `VoiceEngine` interface:
+Three engines ship built-in and appear in the Studio picker:
+
+| Engine | Type | Voice source | Needs external server |
+|---|---|---|---|
+| `xtts` | Coqui XTTS-v2 | zero-shot clone (reference wav) | no (local, default) |
+| `fish-speech` | Fish Audio S1/S2 | zero-shot clone or stored `reference_id` | yes (its `api_server`) |
+| `bert-vits2` | BERT + VITS2 | trained speaker (`sid`) + emotion ref | yes (adapter server) |
+
+Each reports capabilities (`needs_ref`, `supports_zero_shot`, `supports_direct`)
+via `GET /api/engines`, shown as badges in Studio. Add third-party engines via the `VoiceEngine` interface:
 
 ```powershell
 uv run python scripts/engine.py list
@@ -215,6 +225,88 @@ class MyEngine:
 [project.entry-points."voicestudio.engines"]
 my-engine = "their_package:MyEngine"
 ```
+
+## Fish Speech engine (HTTP bridge) — the fish.audio model
+
+`fish-speech` bridges to [Fish Audio S1/S2](https://github.com/fishaudio/fish-speech),
+the Dual-AR LLM TTS behind fish.audio: **zero-shot** cloning from a short
+reference, 80+ languages, and inline emotion/prosody tags typed into the text
+(`[whisper]`, `[excited]`, `[angry]`, …). It ships its own API server, so this is
+a thin client — no adapter to write.
+
+```powershell
+# 1. In a SEPARATE venv, install fish-speech and download a model checkpoint.
+# 2. Start its official API server (default port 8080):
+python -m tools.api_server --listen 127.0.0.1:8080
+
+# 3. Point VoiceStudio at it, then pick "Fish Speech S1/S2" in Studio:
+set FISH_SPEECH_URL=http://127.0.0.1:8080/v1/tts
+set FISH_SPEECH_TOKEN=...          # optional, if the server uses an api key
+set FISH_SPEECH_REF_TEXT="..."     # optional transcript of the reference (better cloning)
+set FISH_SPEECH_REF_ID=...         # optional server-stored voice id (fish.audio/m/<id>)
+start.bat
+```
+
+The Studio **reference voice** is sent as `references[0]` (base64 audio) for
+in-context cloning; **Expressiveness** maps to `temperature`. Contract:
+`POST /v1/tts {text, references[], reference_id, format, temperature, top_p,
+repetition_penalty, chunk_length, normalize, streaming}` → `audio/wav`.
+
+## Bert-VITS2 engine (HTTP bridge)
+
+`bert-vits2` is a second engine, selectable in Studio. Bert-VITS2 speaks with a
+**trained speaker** (`sid`), not zero-shot cloning, and its deps conflict with
+XTTS — so VoiceStudio does **not** import it. Instead `engines/bert_vits2.py` is
+a thin HTTP client, and `engines/bert_vits2_server.py` is a reference adapter you
+run inside Bert-VITS2's own venv.
+
+```powershell
+# 1. In a SEPARATE venv, clone Bert-VITS2 + install its requirements.txt,
+#    and download a model (G_*.pth), config.json, bert/ and emotional/ weights.
+
+# 2. From the Bert-VITS2 repo root, start the adapter:
+set BV_REPO=C:\path\to\Bert-VITS2
+set BV_MODEL=C:\path\to\G_xxx.pth
+set BV_CONFIG=C:\path\to\config.json
+python C:\path\to\VoiceStudio\engines\bert_vits2_server.py     # serves :5000
+
+# 3. Point VoiceStudio at it, then pick "Bert-VITS2 (HTTP bridge)" in Studio:
+set BERT_VITS2_URL=http://127.0.0.1:5000/tts
+set BERT_VITS2_SPEAKER=YourSpeaker        # optional; else adapter's first
+start.bat
+```
+
+Contract: `POST /tts {text, speaker, language, sdp_ratio, noise_scale,
+noise_scale_w, length_scale, emotion, reference_audio_b64?}` → `audio/wav`.
+The reference voice you pick in Studio is sent as `reference_audio_b64` and used
+for **emotion** (CLAP), not timbre. `GET /speakers` lists trained speakers.
+
+## HTTP API (fish.audio-style)
+
+Two surfaces share one server:
+
+- `/api/*` — local app endpoints used by the web UI (no auth; bind `127.0.0.1`).
+- `/api/v1/*` — public-style API guarded by a Bearer key. Create keys in the **API** tab (stored in `data/api_keys.json`, git-ignored). Interactive docs: `/docs`.
+
+```bash
+# 1. Create a key (local admin endpoint)
+curl -X POST http://127.0.0.1:9999/api/keys -H "Content-Type: application/json" -d '{"name":"my-app"}'
+# -> {"key":"vs_...","name":"my-app"}   (shown once)
+
+# 2. Generate speech
+curl -X POST http://127.0.0.1:9999/api/v1/tts \
+  -H "Authorization: Bearer vs_..." \
+  -H "Content-Type: application/json" \
+  -d '{"text":"こんにちは！","voice":"data/voices/japanese_mix/pooled.wav","model":"models/japanese_mix","language":"ja"}' \
+  --output out.wav
+
+# 3. List available voices
+curl http://127.0.0.1:9999/api/v1/library -H "Authorization: Bearer vs_..."
+```
+
+`POST /api/v1/tts` body: `text` (required), `voice` (library id, e.g. `data/voices/<name>/pooled.wav`), `model` (optional fine-tuned bundle `models/<name>`; omit = base XTTS-v2), `language`, `engine`, `temperature`, `speed`. Returns `audio/wav`.
+
+Useful local endpoints: `GET /api/library` (voices + clips + models with tags/duration), `GET /api/engines` (capabilities: `needs_ref`, `supports_zero_shot`, `supports_direct`), `GET /api/models`, `GET /api/preview?id=<voice>`.
 
 ## Tips for natural voice
 

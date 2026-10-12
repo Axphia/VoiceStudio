@@ -12,6 +12,10 @@ class VoiceEngine(ABC):
     label: str = "Base engine"
     #: True if the engine needs a reference voice file (voice cloning)
     needs_ref: bool = True
+    #: True if the engine supports text-to-speech directly without reference
+    supports_direct: bool = False
+    #: True if the engine supports zero-shot voice cloning
+    supports_zero_shot: bool = False
 
     @abstractmethod
     def synthesize(

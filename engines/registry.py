@@ -39,7 +39,9 @@ def _discover_external() -> None:
 
 def _discover_builtin() -> None:
     from . import xtts as _xtts  # noqa: F401  (registers itself)
-    _ = _xtts
+    from . import bert_vits2 as _bv  # noqa: F401  (HTTP bridge, registers itself)
+    from . import fish_speech as _fs  # noqa: F401  (HTTP bridge, registers itself)
+    _ = (_xtts, _bv, _fs)
 
 
 _discover_builtin()

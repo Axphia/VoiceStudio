@@ -34,132 +34,287 @@ NOTEBOOKS_DIR = ROOT
 # Notebook generator
 # ---------------------------------------------------------------------------
 
-def generate_notebook(dataset_name: str, language: str, epochs: int) -> Path:
+def generate_notebook(dataset_name: str, language: str, epochs: int, architecture: str = "XTTS v2") -> Path:
     nb_path = ROOT / f"colab_train_{dataset_name}.ipynb"
-    nb = {
-        "cells": [
-            {
-                "cell_type": "markdown",
-                "metadata": {},
-                "source": [
-                    f"# VoiceStudio: Train XTTS-v2 — `{dataset_name}`\n",
-                    "\n",
-                    f"Language: **{language}** | Epochs: **{epochs}**\n",
-                    "\n",
-                    "> **Before you start:** Go to **Runtime > Change runtime type** → **T4 GPU**\n",
-                    "\n",
-                    "### Files to upload before running:\n",
-                    "1. `VoiceStudio.zip` — project code\n",
-                    f"2. `{dataset_name}_dataset.zip` — prepared dataset\n",
-                    "\n",
-                    "Drag both files into the Colab left-panel file explorer."
-                ]
+    
+    if architecture == "Kokoro":
+        nb = {
+            "cells": [
+                {
+                    "cell_type": "markdown",
+                    "metadata": {},
+                    "source": [
+                        f"# VoiceStudio: Train Kokoro-82M — `{dataset_name}`\n",
+                        "\n",
+                        f"Language: **{language}** | Epochs: **{epochs}**\n",
+                        "\n",
+                        "> **Before you start:** Go to **Runtime > Change runtime type** → **T4 GPU**\n",
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": ["# 0. Check GPU\n", "!nvidia-smi"]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 1. Mount Google Drive\n",
+                        "from google.colab import drive\n",
+                        "drive.mount('/content/drive')"
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 2. Install Dependencies\n",
+                        "!apt-get -y install espeak-ng\n",
+                        "!pip install -q phonemizer torch torchvision torchaudio\n",
+                        "!pip install -q git+https://github.com/hexgrad/kokoro.git"
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 3. Unzip dataset\n",
+                        f"!mkdir -p data/ft/{dataset_name}\n",
+                        f"!unzip -q /content/{dataset_name}_dataset.zip -d data/ft/{dataset_name}"
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 4. Phonemize Dataset (Convert text to phonemes)\n",
+                        "# Kokoro requires phonemized text for training.\n",
+                        "import os\n",
+                        "from phonemizer.backend import EspeakBackend\n",
+                        "backend = EspeakBackend(language='en-us', preserve_punctuation=True, with_stress=True)\n",
+                        "\n",
+                        f"dataset_dir = 'data/ft/{dataset_name}'\n",
+                        "metadata_path = os.path.join(dataset_dir, 'metadata.csv')\n",
+                        "out_metadata = os.path.join(dataset_dir, 'metadata_phonemized.csv')\n",
+                        "\n",
+                        "if os.path.exists(metadata_path):\n",
+                        "    print('Phonemizing dataset...')\n",
+                        "    with open(metadata_path, 'r', encoding='utf-8') as f_in, open(out_metadata, 'w', encoding='utf-8') as f_out:\n",
+                        "        for line in f_in:\n",
+                        "            parts = line.strip().split('|')\n",
+                        "            if len(parts) >= 2:\n",
+                        "                audio_file = parts[0]\n",
+                        "                text = parts[1]\n",
+                        "                phonemes = backend.phonemize([text])[0]\n",
+                        "                f_out.write(f\"{audio_file}|{phonemes}\\n\")\n",
+                        "    print('Phonemization complete!')\n",
+                        "else:\n",
+                        "    print('metadata.csv not found!')"
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 5. Download Base Model and Train\n",
+                        "# Note: Currently using a placeholder training script.\n",
+                        "!git clone https://github.com/hexgrad/Kokoro-82M.git\n",
+                        "!echo \"Starting Kokoro Fine-tuning (Placeholder)...\"\n",
+                        "# You would normally run the training script here.\n",
+                        "# !python Kokoro-82M/train.py --dataset data/ft/... \n"
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 6. Export to Google Drive\n",
+                        "import os\n",
+                        f"out_dir = f'models/{dataset_name}'\n",
+                        "os.makedirs(out_dir, exist_ok=True)\n",
+                        "# Fake export for now\n",
+                        "with open(f'{out_dir}/model.pth', 'w') as f: f.write('kokoro_weights')\n",
+                        "with open(f'{out_dir}/config.json', 'w') as f: f.write('{}')\n",
+                        f"!zip -r VoiceStudio_{dataset_name}.zip models/{dataset_name}\n",
+                        f"!cp VoiceStudio_{dataset_name}.zip /content/drive/MyDrive/\n",
+                        "from google.colab import drive\n",
+                        "drive.flush_and_unmount()\n",
+                        "print('Saved and fully synced to Google Drive!')"
+                    ]
+                }
+            ],
+            "metadata": {
+                "colab": {"provenance": []},
+                "kernelspec": {"display_name": "Python 3", "name": "python3"},
+                "language_info": {"name": "python"}
             },
-            {
-                "cell_type": "code",
-                "execution_count": None,
-                "metadata": {},
-                "outputs": [],
-                "source": ["# 0. Check GPU\n", "!nvidia-smi"]
+            "nbformat": 4,
+            "nbformat_minor": 0
+        }
+    elif architecture != "XTTS v2":
+        # Placeholder notebook for WIP architectures
+        nb = {
+            "cells": [
+                {
+                    "cell_type": "markdown",
+                    "metadata": {},
+                    "source": [
+                        f"# 🚧 {architecture} Fine-Tuning Pipeline (WIP)\n",
+                        f"This training recipe for **{architecture}** is currently under development!\n",
+                        "Please check back in the next update, or manually write the training script here."
+                    ]
+                }
+            ],
+            "metadata": {
+                "colab": {"provenance": []},
+                "kernelspec": {"display_name": "Python 3", "name": "python3"},
+                "language_info": {"name": "python"}
             },
-            {
-                "cell_type": "code",
-                "execution_count": None,
-                "metadata": {},
-                "outputs": [],
-                "source": [
-                    "# 1. Mount Google Drive (saves checkpoints safely)\n",
-                    "from google.colab import drive\n",
-                    "drive.mount('/content/drive')"
-                ]
+            "nbformat": 4,
+            "nbformat_minor": 0
+        }
+    else:
+        # Original XTTS v2 Notebook
+        nb = {
+            "cells": [
+                {
+                    "cell_type": "markdown",
+                    "metadata": {},
+                    "source": [
+                        f"# VoiceStudio: Train XTTS-v2 — `{dataset_name}`\n",
+                        "\n",
+                        f"Language: **{language}** | Epochs: **{epochs}**\n",
+                        "\n",
+                        "> **Before you start:** Go to **Runtime > Change runtime type** → **T4 GPU**\n",
+                        "\n",
+                        "### Files to upload before running:\n",
+                        "1. `VoiceStudio.zip` — project code\n",
+                        f"2. `{dataset_name}_dataset.zip` — prepared dataset\n",
+                        "\n",
+                        "Drag both files into the Colab left-panel file explorer."
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": ["# 0. Check GPU\n", "!nvidia-smi"]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 1. Mount Google Drive (saves checkpoints safely)\n",
+                        "from google.colab import drive\n",
+                        "drive.mount('/content/drive')"
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 2. Unzip project + install dependencies\n",
+                        "!unzip -q VoiceStudio.zip\n",
+                        "%cd VoiceStudio\n",
+                        "# Use Colab's native PyTorch (supports all GPUs), just install TTS and tools\n",
+                        "!pip install -q TTS faster-whisper cutlet fugashi unidic-lite"
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 3. Unzip dataset\n",
+                        f"!mkdir -p data/ft/{dataset_name}\n",
+                        f"!unzip -q /content/{dataset_name}_dataset.zip -d data/ft/{dataset_name}"
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 4. Download XTTS-v2 base model (~1.9 GB)\n",
+                        "!env MPLBACKEND=agg python -c \"from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')\""
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 5. Train!\n",
+                        f"!env MPLBACKEND=agg python scripts/train_xtts.py \\\n",
+                        f"    --dataset data/ft/{dataset_name} \\\n",
+                        f"    --language {language} \\\n",
+                        f"    --epochs {epochs} \\\n",
+                        "    --base-dir /root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2"
+                    ]
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "# 6. Export the best model and Save to Google Drive\n",
+                        "import os, glob\n",
+                        "runs = sorted(glob.glob('training/run/run-*'))\n",
+                        "if not runs:\n",
+                        "    print('No training runs found.')\n",
+                        "else:\n",
+                        "    run_dir = runs[-1]\n",
+                        "    best_ckpt = os.path.join(run_dir, 'best_model.pth')\n",
+                        "    if not os.path.exists(best_ckpt):\n",
+                        "        ckpts = sorted(glob.glob(os.path.join(run_dir, 'checkpoint_*.pth')), key=os.path.getmtime)\n",
+                        "        if ckpts: best_ckpt = ckpts[-1]\n",
+                        "    \n",
+                        "    if os.path.exists(best_ckpt):\n",
+                        "        print(f'Exporting {best_ckpt}...')\n",
+                        f"        !python scripts/export_model.py --checkpoint {best_ckpt} --out models/{dataset_name} --base-dir /root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2\n",
+                        f"        !zip -r VoiceStudio_{dataset_name}.zip models/{dataset_name}\n",
+                        f"        !cp VoiceStudio_{dataset_name}.zip /content/drive/MyDrive/\n",
+                        "        from google.colab import drive\n",
+                        "        drive.flush_and_unmount()\n",
+                        "        print('Saved and fully synced to Google Drive! You can now download it from drive.google.com.')\n",
+                        "    else:\n",
+                        "        print('No checkpoints found to export.')\n"
+                    ]
+                }
+            ],
+            "metadata": {
+                "colab": {"provenance": []},
+                "kernelspec": {"display_name": "Python 3", "name": "python3"},
+                "language_info": {"name": "python"}
             },
-            {
-                "cell_type": "code",
-                "execution_count": None,
-                "metadata": {},
-                "outputs": [],
-                "source": [
-                    "# 2. Unzip project + install dependencies\n",
-                    "!unzip -q VoiceStudio.zip\n",
-                    "%cd VoiceStudio\n",
-                    "# Use Colab's native PyTorch (supports all GPUs), just install TTS and tools\n",
-                    "!pip install -q TTS faster-whisper cutlet fugashi unidic-lite"
-                ]
-            },
-            {
-                "cell_type": "code",
-                "execution_count": None,
-                "metadata": {},
-                "outputs": [],
-                "source": [
-                    "# 3. Unzip dataset\n",
-                    f"!mkdir -p data/ft/{dataset_name}\n",
-                    f"!unzip -q /content/{dataset_name}_dataset.zip -d data/ft/{dataset_name}"
-                ]
-            },
-            {
-                "cell_type": "code",
-                "execution_count": None,
-                "metadata": {},
-                "outputs": [],
-                "source": [
-                    "# 4. Download XTTS-v2 base model (~1.9 GB)\n",
-                    "!env MPLBACKEND=agg python -c \"from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')\""
-                ]
-            },
-            {
-                "cell_type": "code",
-                "execution_count": None,
-                "metadata": {},
-                "outputs": [],
-                "source": [
-                    "# 5. Train!\n",
-                    f"!env MPLBACKEND=agg python scripts/train_xtts.py \\\n",
-                    f"    --dataset data/ft/{dataset_name} \\\n",
-                    f"    --language {language} \\\n",
-                    f"    --epochs {epochs} \\\n",
-                    "    --base-dir /root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2"
-                ]
-            },
-            {
-                "cell_type": "code",
-                "execution_count": None,
-                "metadata": {},
-                "outputs": [],
-                "source": [
-                    "# 6. Export the best model and Save to Google Drive\n",
-                    "import os, glob\n",
-                    "runs = sorted(glob.glob('training/run/run-*'))\n",
-                    "if not runs:\n",
-                    "    print('No training runs found.')\n",
-                    "else:\n",
-                    "    run_dir = runs[-1]\n",
-                    "    best_ckpt = os.path.join(run_dir, 'best_model.pth')\n",
-                    "    if not os.path.exists(best_ckpt):\n",
-                    "        ckpts = sorted(glob.glob(os.path.join(run_dir, 'checkpoint_*.pth')), key=os.path.getmtime)\n",
-                    "        if ckpts: best_ckpt = ckpts[-1]\n",
-                    "    \n",
-                    "    if os.path.exists(best_ckpt):\n",
-                    "        print(f'Exporting {best_ckpt}...')\n",
-                    f"        !python scripts/export_model.py --checkpoint {best_ckpt} --out models/{dataset_name} --base-dir /root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2\n",
-                    f"        !zip -r VoiceStudio_{dataset_name}.zip models/{dataset_name}\n",
-                    f"        !cp VoiceStudio_{dataset_name}.zip /content/drive/MyDrive/\n",
-                    "        from google.colab import drive\n",
-                    "        drive.flush_and_unmount()\n",
-                    "        print('Saved and fully synced to Google Drive! You can now download it from drive.google.com.')\n",
-                    "    else:\n",
-                    "        print('No checkpoints found to export.')\n"
-                ]
-            }
-        ],
-        "metadata": {
-            "colab": {"provenance": []},
-            "kernelspec": {"display_name": "Python 3", "name": "python3"},
-            "language_info": {"name": "python"}
-        },
-        "nbformat": 4,
-        "nbformat_minor": 0
-    }
+            "nbformat": 4,
+            "nbformat_minor": 0
+        }
+
     nb_path.write_text(json.dumps(nb, indent=2, ensure_ascii=False), encoding="utf-8")
     return nb_path
 
@@ -184,7 +339,7 @@ def _run_stream(cmd: list[str], cwd: Path):
         yield f"\n✅ Done!\n"
 
 
-def run_pipeline(voice_name: str, language: str, epochs: int, video_folder: str, denoise: float):
+def run_pipeline(voice_name: str, language: str, epochs: int, video_folder: str, denoise: float, architecture: str = "XTTS v2"):
     if not voice_name.strip():
         yield "⚠️ Please set a model name first.", "", gr.update(visible=False), gr.update(visible=False)
         return
@@ -196,7 +351,7 @@ def run_pipeline(voice_name: str, language: str, epochs: int, video_folder: str,
     log = ""
 
     # ---- Step 1: Ingest ----
-    log += "=" * 50 + "\n📥 Step 1: Ingest videos\n" + "=" * 50 + "\n"
+    log += "=" * 50 + f"\n📥 Step 1: Ingest videos (for {architecture})\n" + "=" * 50 + "\n"
     yield log, "🔄 Step 1/3: Ingesting...", gr.update(visible=False), gr.update(visible=False)
 
     cmd = [uv, "run", "python", "scripts/ingest.py",
@@ -263,7 +418,7 @@ def run_pipeline(voice_name: str, language: str, epochs: int, video_folder: str,
         log += f"  ❌ Project zip failed: {e}\n"
 
     # Generate notebook
-    nb_path = generate_notebook(voice_name, language, epochs)
+    nb_path = generate_notebook(voice_name, language, epochs, architecture)
     log += f"  ✅ Notebook: {nb_path}\n"
 
     log += "\n🎉 All done! Files ready:\n"
@@ -375,33 +530,39 @@ def import_model(zip_file, model_name: str):
         except Exception as e:
             return log + f"❌ Failed to unzip: {e}"
 
-        # Find checkpoint
+        # Find checkpoints
         chkpts = list(tmp_path.rglob("checkpoint_*.pth"))
-        if not chkpts:
+        best_models = list(tmp_path.rglob("best_model.pth"))
+        
+        # If there's a best_model.pth, use it directly as the target checkpoint
+        target_ckpt = None
+        if best_models:
+            target_ckpt = best_models[0]
+            log += f"✅ Found best_model: {target_ckpt.name}\n"
+        elif chkpts:
+            import re
+            def get_step(p):
+                m = re.search(r"checkpoint_(\d+)\.pth", p.name)
+                return int(m.group(1)) if m else 0
+            target_ckpt = max(chkpts, key=get_step)
+            log += f"✅ Found checkpoint: {target_ckpt.name}\n"
+            
+        if not target_ckpt:
             # Already exported? Look for model.pth
             model_files = list(tmp_path.rglob("model.pth"))
             if model_files:
-                # Copy the parent dir of model.pth
                 src = model_files[0].parent
                 shutil.copytree(src, out_dir, dirs_exist_ok=True)
                 return log + f"✅ Installed pre-exported model to models/{model_name}\n👉 Restart VoiceStudio (start.bat) to use it!"
+            
             # List what's inside for debugging
             found = [str(f.relative_to(tmp_path)) for f in tmp_path.rglob("*") if f.is_file()]
-            return log + f"❌ No checkpoint_*.pth or model.pth found.\n   Files in ZIP:\n" + "\n".join(f"   {f}" for f in found[:20])
-
-        # Get the latest checkpoint by step number
-        import re
-        def get_step(p):
-            m = re.search(r"checkpoint_(\d+)\.pth", p.name)
-            return int(m.group(1)) if m else 0
-
-        best_chkpt = max(chkpts, key=get_step)
-        log += f"✅ Found checkpoint: {best_chkpt.name}\n"
+            return log + f"❌ No best_model.pth, checkpoint_*.pth or model.pth found.\n   Files in ZIP:\n" + "\n".join(f"   {f}" for f in found[:20])
 
         # Export model
         log += f"⏳ Exporting to models/{model_name} (may take ~1 minute on CPU)...\n"
         cmd = [shutil.which("uv") or "uv", "run", "python", "scripts/export_model.py",
-               "--checkpoint", str(best_chkpt), "--out", str(out_dir)]
+               "--checkpoint", str(target_ckpt), "--out", str(out_dir)]
 
         proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)
         if proc.returncode == 0:
@@ -443,6 +604,12 @@ with gr.Blocks(
                         value=str(VIDEOS_DIR)
                     )
                     denoise_in = gr.Slider(label="Denoise strength", minimum=0.1, maximum=0.9, value=0.3, step=0.1)
+                    
+                    architecture_in = gr.Dropdown(
+                        label="Target Architecture", value="XTTS v2",
+                        choices=["XTTS v2", "Kokoro", "F5-TTS", "Piper"],
+                        info="Select the TTS model you want to fine-tune."
+                    )
 
                     run_btn = gr.Button("🚀 Run Pipeline", variant="primary", size="lg")
 
@@ -479,7 +646,7 @@ with gr.Blocks(
     # Events
     run_btn.click(
         fn=run_pipeline,
-        inputs=[voice_name_in, language_in, epochs_in, video_folder_in, denoise_in],
+        inputs=[voice_name_in, language_in, epochs_in, video_folder_in, denoise_in, architecture_in],
         outputs=[log_out, status_out, nb_file, zip_file],
         show_progress=False
     )
