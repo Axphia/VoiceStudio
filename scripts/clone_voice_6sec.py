@@ -194,7 +194,7 @@ def main():
         print(f"   Audio:   {clean_wav.resolve()}")
         print(f"   Latents: {clean_pt.resolve()}")
         print(f"\nYou can now clone any speech with:")
-        print(f"   python scripts/clone_fast.py --latents \"{clean_pt}\" --text \"Your text here\" --language {args.language}")
+        print(f"   python scripts/clone_voice_fast.py --latents \"{clean_pt}\" --text \"Your text here\" --language {args.language}")
 
 
 if __name__ == "__main__":

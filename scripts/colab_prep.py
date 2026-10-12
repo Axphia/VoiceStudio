@@ -354,7 +354,7 @@ def run_pipeline(voice_name: str, language: str, epochs: int, video_folder: str,
     log += "=" * 50 + f"\n📥 Step 1: Ingest videos (for {architecture})\n" + "=" * 50 + "\n"
     yield log, "🔄 Step 1/3: Ingesting...", gr.update(visible=False), gr.update(visible=False)
 
-    cmd = [uv, "run", "python", "scripts/ingest.py",
+    cmd = [uv, "run", "python", "scripts/audio_ingest.py",
            "--input", str(video_path),
            "--out-dir", str(voice_dir),
            "--denoise", str(denoise)]
@@ -367,7 +367,7 @@ def run_pipeline(voice_name: str, language: str, epochs: int, video_folder: str,
     yield log, "🔄 Step 2/3: Preparing...", gr.update(visible=False), gr.update(visible=False)
 
     clean_dir = voice_dir / "clean"
-    cmd = [uv, "run", "python", "scripts/prepare_ft.py",
+    cmd = [uv, "run", "python", "scripts/train_prepare.py",
            "--input", str(clean_dir),
            "--out", str(ft_dir),
            "--language", language]
@@ -561,7 +561,7 @@ def import_model(zip_file, model_name: str):
 
         # Export model
         log += f"⏳ Exporting to models/{model_name} (may take ~1 minute on CPU)...\n"
-        cmd = [shutil.which("uv") or "uv", "run", "python", "scripts/export_model.py",
+        cmd = [shutil.which("uv") or "uv", "run", "python", "scripts/train_export.py",
                "--checkpoint", str(target_ckpt), "--out", str(out_dir)]
 
         proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)

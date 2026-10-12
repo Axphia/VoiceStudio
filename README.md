@@ -64,18 +64,22 @@ engines/            # pluggable TTS backends
   xtts.py           # built-in Coqui XTTS-v2 engine
 scripts/
   api.py            # web backend (JSON API + serves web/)
-  ingest.py         # batch: many files/folder → cleaned dataset + pooled voice
-  prepare_ft.py     # transcribe + segment for XTTS fine-tuning
+  audio_ingest.py   # batch: many files/folder → cleaned dataset + pooled voice
+  audio_clean_ref.py# trim + denoise + normalize ref (e.g. 6s clean audio)
+  audio_extract.py  # video → mono WAV
+  audio_latents.py  # speaker conditioning → cached .pt (run once per voice)
+  clone_voice.py    # XTTS-v2 zero-shot cloning (single shot)
+  clone_voice_fast.py # model loads once + cached latents, batch --texts file
+  clone_voice_6sec.py # instant 6-second clean voice cloning
+  train_prepare.py  # transcribe + segment for XTTS fine-tuning
   train_xtts.py     # XTTS-v2 fine-tuning (local or Colab)
-  export_model.py   # checkpoint → portable model bundle
+  train_export.py   # checkpoint → portable model bundle
   colab_prep.py     # Gradio app: pipeline prep + model install
-  extract_audio.py  # video → mono WAV
-  clean_ref.py      # trim + denoise + normalize ref
-  clone.py          # XTTS-v2 zero-shot cloning (single shot)
-  compute_latents.py# speaker conditioning → cached .pt (run once per voice)
-  clone_fast.py     # model loads once + cached latents, batch --texts file
-  hw.py             # hardware profile detection
-  calibrate.py      # tune pitch / temperature on exported model
+  hw_detect.py      # hardware profile detection
+  hw_calibrate.py   # tune pitch / temperature on exported model
+  engine_manage.py  # engine plugin management CLI
+  mood_analyze.py   # text emotion, mood & prosody analysis CLI
+  test_mood_sound.py# voice synthesis testing with emotional prosody
 web/                # vanilla HTML/JS UI (no build step)
 start.bat           # launch VoiceStudio → http://127.0.0.1:9999
 colab_prep.bat      # launch Colab Tools → http://127.0.0.1:9998
@@ -87,19 +91,19 @@ colab_train_*.ipynb # auto-generated Colab training notebooks
 1. Extract audio from video:
 
 ```powershell
-uv run python scripts/extract_audio.py --video "data/videos/YOUR_VIDEO.mp4" --out "data/audio_clean/ref.wav"
+uv run python scripts/audio_extract.py --video "data/videos/YOUR_VIDEO.mp4" --out "data/audio_clean/ref.wav"
 ```
 
 2. Clean reference (6–10s clean single-speaker is ideal):
 
 ```powershell
-uv run python scripts/clean_ref.py --in "data/audio_clean/ref.wav" --out "data/audio_clean/clean.wav" --start 3.0 --dur 8.0
+uv run python scripts/audio_clean_ref.py --in "data/audio_clean/ref.wav" --out "data/audio_clean/clean.wav" --start 3.0 --dur 6.0
 ```
 
 3. Clone:
 
 ```powershell
-uv run python scripts/clone.py --text "Hello world" --speaker-wav "data/audio_clean/clean.wav" --out "outputs/cloned.wav" --language en
+uv run python scripts/clone_voice.py --text "Hello world" --speaker-wav "data/audio_clean/clean.wav" --out "outputs/cloned.wav" --language en
 ```
 
 Options: `--language en|ja|zh|...`, `--speed 0.95` (slower, more natural), `--no-split` (disable sentence splitting).
@@ -109,15 +113,15 @@ Options: `--language en|ja|zh|...`, `--speed 0.95` (slower, more natural), `--no
 Point at a folder or several files — videos and audios mix freely:
 
 ```powershell
-uv run python scripts/ingest.py --input data/videos --out-dir data/voices/my_voice
-uv run python scripts/ingest.py --input a.mp4 --input b.m4a --out-dir data/voices/mix --denoise 0.4
+uv run python scripts/audio_ingest.py --input data/videos --out-dir data/voices/my_voice
+uv run python scripts/audio_ingest.py --input a.mp4 --input b.m4a --out-dir data/voices/mix --denoise 0.4
 ```
 
 Then compute latents and clone fast:
 
 ```powershell
-uv run python scripts/compute_latents.py --speaker-wav data/voices/my_voice/pooled.wav --out data/voices/my_voice/voice.pt
-uv run python scripts/clone_fast.py --latents data/voices/my_voice/voice.pt --text "こんにちは！" --out outputs/x.wav --language ja
+uv run python scripts/audio_latents.py --speaker-wav data/voices/my_voice/pooled.wav --out data/voices/my_voice/voice.pt
+uv run python scripts/clone_voice_fast.py --latents data/voices/my_voice/voice.pt --text "こんにちは！" --out outputs/x.wav --language ja
 ```
 
 Tip: one speaker per folder. Mixing different speakers blurs the voice.

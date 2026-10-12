@@ -421,12 +421,12 @@ def _script_module(name: str):
 
 
 def _ingest_module():
-    return _script_module("ingest")
+    return _script_module("audio_ingest")
 
 
 @app.get("/api/hw", tags=["app"])
 def hw():
-    mod = _script_module("hw")
+    mod = _script_module("hw_detect")
     info = mod.detect()
     return {**info, "profile": mod.recommend(info),
             "profiles": list(mod.PROFILES)}
@@ -465,7 +465,7 @@ def _run_train_job(job_id: str, req: TrainRequest):
     log = open(job["log"], "w", encoding="utf-8")
     try:
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
-            prep = _script_module("prepare_ft")
+            prep = _script_module("train_prepare")
             ds = ROOT / "training" / "web" / job_id
             prep.prepare(ROOT / req.source, ds, req.language, job_id)
             tr = _script_module("train_xtts")
