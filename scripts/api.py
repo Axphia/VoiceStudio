@@ -428,8 +428,17 @@ def _ingest_module():
 def hw():
     mod = _script_module("hw_detect")
     info = mod.detect()
-    return {**info, "profile": mod.recommend(info),
-            "profiles": list(mod.PROFILES)}
+    rust_bin = ROOT / "target" / "release" / "voice-prep.exe"
+    if not rust_bin.exists():
+        rust_bin = ROOT / "crates" / "voice_core" / "target" / "release" / "voice-prep.exe"
+    return {
+        **info,
+        "profile": mod.recommend(info),
+        "profiles": list(mod.PROFILES),
+        "rust_accelerated": rust_bin.exists(),
+        "rust_version": "0.1.0 (Burn + Sinc DSP)",
+    }
+
 
 
 @app.get("/api/ft-sources", tags=["app"])
@@ -465,9 +474,30 @@ def _run_train_job(job_id: str, req: TrainRequest):
     log = open(job["log"], "w", encoding="utf-8")
     try:
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
-            prep = _script_module("train_prepare")
             ds = ROOT / "training" / "web" / job_id
-            prep.prepare(ROOT / req.source, ds, req.language, job_id)
+            rust_bin = ROOT / "target" / "release" / "voice-prep.exe"
+            if not rust_bin.exists():
+                rust_bin = ROOT / "crates" / "voice_core" / "target" / "release" / "voice-prep.exe"
+
+            if rust_bin.exists():
+                print(f"[api.train] ⚡ Using compiled Rust voice-prep engine: {rust_bin}")
+                import subprocess
+                cmd = [
+                    str(rust_bin), "batch-prep",
+                    "--input-dir", str((ROOT / req.source).resolve()),
+                    "--out-dir", str(ds.resolve()),
+                    "--sr", "22050",
+                    "--max-dur", "11.0",
+                ]
+                res = subprocess.run(cmd)
+                if res.returncode != 0:
+                    print("[api.train] Rust batch-prep returned error, fallback to Python train_prepare...")
+                    prep = _script_module("train_prepare")
+                    prep.prepare(ROOT / req.source, ds, req.language, job_id)
+            else:
+                prep = _script_module("train_prepare")
+                prep.prepare(ROOT / req.source, ds, req.language, job_id)
+
             tr = _script_module("train_xtts")
             tr.train(ds, req.language, ds / "run", req.epochs, False,
                      req.smoke, None, str(tr.BASE_DIR),
@@ -545,9 +575,26 @@ async def create_voice(name: str = Form("my_voice"),
 def clone(req: CloneRequest, bg: BackgroundTasks):
     out = _synthesize(req.text, req.voice or None, req.language, req.engine,
                       req.temperature, req.speed, req.model)
+    latest_wav = ROOT / "outputs" / "latest.wav"
+    try:
+        latest_wav.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(out, latest_wav)
+    except Exception as e:
+        print(f"[api] could not copy to latest.wav: {e}")
+
     bg.add_task(out.unlink, missing_ok=True)
-    return FileResponse(str(out), media_type="audio/wav",
-                        filename="cloned.wav", background=bg)
+    return FileResponse(str(latest_wav), media_type="audio/wav",
+                        filename="voicestudio_cloned.wav")
+
+
+@app.get("/api/download/latest", tags=["app"])
+def download_latest():
+    latest_wav = ROOT / "outputs" / "latest.wav"
+    if not latest_wav.exists():
+        raise HTTPException(404, "No audio generated yet.")
+    return FileResponse(str(latest_wav), media_type="audio/wav",
+                        filename=f"voicestudio_{int(time.time())}.wav")
+
 
 
 # ---- API key management (local admin) ----

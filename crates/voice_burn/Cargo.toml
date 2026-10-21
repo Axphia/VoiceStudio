@@ -1,0 +1,16 @@
+[package]
+name = "voice_burn"
+version = "0.1.0"
+edition = "2021"
+description = "Pure Rust Deep Learning voice & audio model training with Burn"
+
+[dependencies]
+voice_core = { path = "../voice_core" }
+burn = { version = "0.14", features = ["train", "wgpu", "ndarray"] }
+serde = { version = "1.0", features = ["derive"] }
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+
+[[bin]]
+name = "voice-burn"
+path = "src/main.rs"

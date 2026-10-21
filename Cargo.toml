@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/voice_core",
+    "crates/voice_server",
+    "crates/voice_burn",
+]
+resolver = "2"

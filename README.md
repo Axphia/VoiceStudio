@@ -334,4 +334,20 @@ Useful local endpoints: `GET /api/library` (voices + clips + models with tags/du
 | `File is not a zip file` when installing | Re-download from Google Drive: right-click folder → **Download**. |
 
 
+## ⚡ Rust Acceleration (Fast Preprocessing & Inference)
+
+VoiceStudio includes high-performance native Rust crates in `crates/`:
+
+- **`voice_core` (`voice-prep.exe`)**: Multi-threaded audio slicing, Sinc resampling via `rubato`, and VAD. Prepares entire training datasets in < 0.1s.
+- **`voice_server` (`voice-server.exe`)**: Ultra-low latency audio streaming server with Axum.
+- **`voice_burn` (`voice-burn.exe`)**: Pure Rust Deep Learning model trainer powered by the Burn framework (WGPU / CUDA).
+
+```powershell
+# Fast dataset prep across all CPU cores
+.\target\release\voice-prep.exe batch-prep --input-dir data/audio_clean --out-dir data/ft/myvoice
+
+# Or run via Python
+uv run python scripts/prepare_fast.py --input data/audio_clean --out data/ft/myvoice
+```
+
 -- Sample model: https://huggingface.co/minta1234/japanese-mix-xtts

@@ -43,3 +43,8 @@ Thumbs.db
 .idea/
 *.swp
 todo.txt
+
+# Rust build artifacts
+target/
+crates/**/target/
+bin/
