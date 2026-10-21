@@ -20,7 +20,15 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import time
 import warnings
+import sys
 from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+SCRIPTS_DIR = Path(__file__).resolve().parent
+for _p in [ROOT_DIR, SCRIPTS_DIR]:
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
 
 warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
 warnings.filterwarnings("ignore", category=FutureWarning, module="TTS.*")
@@ -158,8 +166,11 @@ def train(dataset, language, out, epochs, eval_split, smoke, resume,
         language=language,
     )]
 
-    # --- hardware profile: keeps the desktop usable while training ---
-    import hw as hwmod
+    try:
+        import hw_detect as hwmod
+    except ImportError:
+        import hw as hwmod
+
 
     hw_info = hwmod.detect()
     if profile == "high" and hw_info.get("vram_total_gb", 0) < 10:
