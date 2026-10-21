@@ -218,7 +218,8 @@ fn main() -> Result<()> {
                                 (clip.duration_sec() * 1000.0) as usize,
                                 Ordering::Relaxed,
                             );
-                            rows.push((clip_name, format!("Speech clip from {}", stem)));
+                            let short_stem: String = stem.chars().take(28).collect();
+                            rows.push((clip_name, format!("Clip {}", short_stem)));
                         }
                     }
                     rows

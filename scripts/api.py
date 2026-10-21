@@ -33,7 +33,7 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="TTS.*")
 import torch
 import uvicorn
 from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form, Header,
-                     HTTPException, UploadFile)
+                     HTTPException, Request, UploadFile)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -49,18 +49,29 @@ _slot: dict = {"key": "__base__", "model": None}
 _latents_cache: dict[tuple, dict] = {}
 
 
+def evict_model():
+    """Unload model from GPU memory to free VRAM for training or other tasks."""
+    if _slot["model"] is not None:
+        del _slot["model"]
+        _slot["model"] = None
+        _slot["key"] = None
+    _latents_cache.clear()
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        try:
+            torch.cuda.ipc_collect()
+        except Exception:
+            pass
+
 def get_model(model_dir: str | None = None):
     """Load (and cache) base XTTS or a fine-tuned bundle. Swaps on change."""
     key = str(Path(model_dir).resolve()) if model_dir else "__base__"
     if _slot["key"] == key and _slot["model"] is not None:
         return _slot["model"]
 
-    if _slot["model"] is not None:  # evict previous to free VRAM
-        del _slot["model"]
-        _slot["model"] = None
-        _latents_cache.clear()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+    evict_model()
 
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark = True
@@ -348,6 +359,16 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def no_cache_ui(request: Request, call_next):
+    resp = await call_next(request)
+    if request.url.path in ("/", "/index.html") or request.url.path.endswith(".html"):
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+    return resp
+
+
 @app.get("/api/health", tags=["app"])
 def health():
     return {"ok": True, "cuda": torch.cuda.is_available(),
@@ -473,6 +494,8 @@ def _run_train_job(job_id: str, req: TrainRequest):
     job = _jobs[job_id]
     log = open(job["log"], "w", encoding="utf-8")
     try:
+        # Crucial for low VRAM (4GB RTX 3050): Evict inference model from VRAM before training!
+        evict_model()
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             ds = ROOT / "training" / "web" / job_id
             rust_bin = ROOT / "target" / "release" / "voice-prep.exe"
@@ -507,7 +530,9 @@ def _run_train_job(job_id: str, req: TrainRequest):
                      f"web-{job_id}", req.burst_epochs, req.rest_seconds)
         job["status"] = "done"
     except Exception as e:
-        print(f"[job {job_id}] FAILED: {e}", file=log)
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[job {job_id}] FAILED: {e}\n{tb}", file=log)
         job["status"] = "error"
     finally:
         log.close()
@@ -592,8 +617,14 @@ def download_latest():
     latest_wav = ROOT / "outputs" / "latest.wav"
     if not latest_wav.exists():
         raise HTTPException(404, "No audio generated yet.")
-    return FileResponse(str(latest_wav), media_type="audio/wav",
-                        filename=f"voicestudio_{int(time.time())}.wav")
+    stamp = int(time.time())
+    fname = f"voice_{stamp}.wav"
+    return FileResponse(
+        str(latest_wav),
+        media_type="audio/wav",
+        filename=fname,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'}
+    )
 
 
 

@@ -36,6 +36,29 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="TTS.*")
 import torch
 from trainer import Trainer, TrainerArgs
 
+# Windows file-locking patch: prevents WinError 32 when trainer cleans up log files
+try:
+    import logging
+    import trainer.generic_utils
+    import trainer.trainer
+    _orig_rm_exp = trainer.generic_utils.remove_experiment_folder
+    def _safe_rm_exp(path):
+        tl = logging.getLogger("trainer")
+        for h in list(tl.handlers):
+            try:
+                h.close()
+                tl.removeHandler(h)
+            except Exception:
+                pass
+        try:
+            _orig_rm_exp(path)
+        except Exception:
+            pass
+    trainer.generic_utils.remove_experiment_folder = _safe_rm_exp
+    trainer.trainer.remove_experiment_folder = _safe_rm_exp
+except Exception:
+    pass
+
 from TTS.tts.configs.shared_configs import BaseDatasetConfig
 from TTS.tts.datasets import load_tts_samples
 from TTS.tts.layers.xtts.trainer.gpt_trainer import (
@@ -227,6 +250,11 @@ def train(dataset, language, out, epochs, eval_split, smoke, resume,
 
     def run_burst(resume_path, burst_epochs, tag):
         torch.backends.cudnn.benchmark = False  # determinism > speed here
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         model = GPTTrainer.init_from_config(config)
         trainer = Trainer(
             TrainerArgs(
@@ -243,7 +271,14 @@ def train(dataset, language, out, epochs, eval_split, smoke, resume,
         )
         print(f"[train] burst {tag}: {burst_epochs} epoch(s)"
               + (f" from {resume_path}" if resume_path else " from base"))
-        trainer.fit()
+        try:
+            trainer.fit()
+        finally:
+            del trainer
+            del model
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     def latest_checkpoint():
         cks = list(Path(out).rglob("checkpoint_*.pth"))

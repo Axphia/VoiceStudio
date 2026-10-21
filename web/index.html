@@ -591,7 +591,7 @@
             <span class="ptime" id="tcur">0:00</span>
             <div class="pgrow"><input type="range" id="seek" min="0" max="1000" value="0" style="margin:0"></div>
             <span class="ptime" id="tdur">0:00</span>
-            <button class="btn ghost sm" id="dl" type="button">Download WAV</button>
+            <a class="btn ghost sm" id="dl" href="/api/download/latest" download="voice.wav" style="text-decoration:none; display:inline-flex; align-items:center;">Download WAV</a>
           </div>
           <audio id="audio" style="display:none"></audio>
         </div>
@@ -821,20 +821,21 @@ async function loadPlayer(blob){
   audio.onloadedmetadata=()=>{ $("tdur").textContent=fmt(audio.duration); };
   audio.ontimeupdate=()=>{ const p=audio.duration? audio.currentTime/audio.duration:0;
     drawWave(p); $("seek").value=Math.round(p*1000); $("tcur").textContent=fmt(audio.currentTime); };
-  audio.onended=()=>{ $("pp").textContent="▶"; };
+  $("dl").href = "/api/download/latest?t=" + Date.now();
+  $("dl").download = "voice.wav";
   audio.play(); $("pp").textContent="⏸";
 }
 
 /* Bulletproof WAV Download Handler */
 $("dl").onclick = (e) => {
   e.preventDefault();
+  const a = document.createElement("a");
+  a.style.display = "none";
   if (currentWavBlob) {
-    const url = URL.createObjectURL(currentWavBlob);
-    const a = document.createElement("a");
-    a.style.display = "none";
+    const file = new File([currentWavBlob], "voice.wav", { type: "audio/wav" });
+    const url = URL.createObjectURL(file);
     a.href = url;
-    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g, "-");
-    a.download = `voice_${stamp}.wav`;
+    a.download = `voice_${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {
@@ -842,8 +843,11 @@ $("dl").onclick = (e) => {
       URL.revokeObjectURL(url);
     }, 1500);
   } else {
-    // Fallback to direct backend download endpoint
-    window.location.href = "/api/download/latest";
+    a.href = "/api/download/latest?t=" + Date.now();
+    a.download = "voice.wav";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => document.body.removeChild(a), 1500);
   }
 };
 
